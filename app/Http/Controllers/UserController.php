@@ -35,12 +35,8 @@ class UserController extends Controller
                 "status" => "OK",
                 "data" => $users
             ], 200);
-        } catch (Throwable $e) {
-            return response()->json([
-                "code" => 500,
-                "status" => "OK",
-                "message" => $e->getMessage()
-            ], $e->getCode());
+        } catch (\Throwable $th) {
+            throw new InternalServerErrorException($th->getMessage());
         }
     }
 
@@ -62,7 +58,7 @@ class UserController extends Controller
             
             return $user;
         } catch(\Throwable $th) {
-            return $th;
+            throw new InternalServerErrorException($th->getMessage());
         }
     }
 
