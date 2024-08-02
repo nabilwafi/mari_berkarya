@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\User;
-use App\Http\Requests\UserRequest;
+use App\Http\Requests\CreateUserRequest;
+use App\Http\Requests\UpdateUserRequest;
 use App\Exceptions\NotFoundException;
+use App\Exceptions\InternalServerErrorException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -30,6 +33,10 @@ class UserController extends Controller
 
             $users = $userQuery->get();
 
+            $users->each(function ($user) {
+                $user->image = config('app.url') . Storage::url($user->image);
+            });
+
             return response()->json([
                 "code" => 200,
                 "status" => "OK",
@@ -51,12 +58,21 @@ class UserController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(UserRequest $request)
+    public function store(CreateUserRequest $request)
     {  
         try {
-            $user = User::create($request->all());
+            $path = $request->file('image')->store('uploads', 'public');
             
-            return $user;
+            $data = $request->all();
+            $data['image'] = $path;
+
+            $user = User::create($data);
+            
+            return response()->json([
+                "code" => 200,
+                "status" => "OK",
+                "message" => 'Successfully Created User'
+            ]);
         } catch(\Throwable $th) {
             throw new InternalServerErrorException($th->getMessage());
         }
@@ -69,6 +85,7 @@ class UserController extends Controller
     {
         try {
             $user = User::findOrFail($id);
+            $user['image'] = config('app.url') . Storage::url($user->image);
 
             return response()->json([
                 "code" => 200,
@@ -93,17 +110,24 @@ class UserController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(UserRequest $request, string $id)
+    public function update(UpdateUserRequest $request, string $id)
     {
         try {
             $user = User::findOrFail($id);
+            $data = $request->all();
             
-            $user->name = $request->input('name');
-            $user->address = $request->input('address');
-            $user->image = $request->input('image');
+            $user->name = $data['name'];
+            $user->address = $data['address'];
+            
+            if($request->hasFile('image')) {
+                Storage::disk('public')->delete($user->image);
+                $path = $request->file('image')->store('uploads', 'public');
+                $user->image = $path;
+            }
 
             $user->save();
-
+            
+            $user['image'] = config('app.url') . Storage::url($user->image);
 
             return response()->json([
                 "code" => 200,
@@ -113,7 +137,7 @@ class UserController extends Controller
         } catch (ModelNotFoundException $e) {
             throw new NotFoundException("User Not Found");
         } catch (\Throwable $th) {
-            throw new InternalServerErrorException($th->getMessage());
+            throw new InternalServerErrorException();
         }
     }
 
@@ -127,13 +151,18 @@ class UserController extends Controller
     public function destroy(string $id)
     {
         try {
-            $user = User::findOrFail($id)->delete();
-            
+            $user = User::findOrFail($id);
+
+            if ($user->image) {
+                Storage::disk('public')->delete($user->image);
+            }
+
+            $user->delete();
+
             return response()->json([
                 "code" => 200,
                 "status" => "OK",
-                "message" => 'Successfully deleted user',
-                "data" => null
+                "message" => 'Successfully deleted user'
             ]);
         } catch (ModelNotFoundException $e) {
             throw new NotFoundException("User Not Found");
